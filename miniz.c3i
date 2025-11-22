@@ -35,6 +35,17 @@ const int MZ_BUF_ERROR = -5;
 const int MZ_VERSION_ERROR = -6;
 const int MZ_PARAM_ERROR = -10000;
 
+// Compression levels
+const int MZ_NO_COMPRESSION = 0;
+const int MZ_BEST_SPEED = 1;
+const int MZ_BEST_COMPRESSION = 9;
+const int MZ_UBER_COMPRESSION = 10;
+const int MZ_DEFAULT_COMPRESSION = -1;
+
+// Checksum init values
+const MzUlong MZ_CRC32_INIT = 0;
+const MzUlong MZ_ADLER32_INIT = 1;
+
 // ============================================================================
 // Types
 // ============================================================================
@@ -139,6 +150,54 @@ extern fn int mz_inflateReset(MzStream* stream);
 extern fn int mz_inflateEnd(MzStream* stream);
 
 // ============================================================================
+// Simple One-Shot Compression/Decompression
+// ============================================================================
+
+/**
+ * Compress data in one call
+ * Returns MZ_OK on success
+ */
+extern fn int mz_compress(char* dest, MzUlong* dest_len, char* source, MzUlong source_len);
+
+/**
+ * Compress data with specified level
+ * level: 0-10 (0=none, 1=fast, 6=default, 9=best, 10=uber)
+ */
+extern fn int mz_compress2(char* dest, MzUlong* dest_len, char* source, MzUlong source_len, int level);
+
+/**
+ * Decompress data in one call
+ * Returns MZ_OK on success
+ */
+extern fn int mz_uncompress(char* dest, MzUlong* dest_len, char* source, MzUlong source_len);
+
+/**
+ * Get upper bound on compressed size (standalone, no stream needed)
+ */
+extern fn MzUlong mz_compressBound(MzUlong source_len);
+
+/**
+ * Free memory allocated by miniz (e.g., from tdefl_compress_mem_to_heap)
+ */
+extern fn void mz_free(void* ptr);
+
+// ============================================================================
+// Checksum Functions
+// ============================================================================
+
+/**
+ * Calculate CRC-32 checksum
+ * Pass MZ_CRC32_INIT (0) as initial crc, or previous crc to continue
+ */
+extern fn MzUlong mz_crc32(MzUlong crc, char* ptr, usz buf_len);
+
+/**
+ * Calculate Adler-32 checksum
+ * Pass MZ_ADLER32_INIT (1) as initial adler, or previous adler to continue
+ */
+extern fn MzUlong mz_adler32(MzUlong adler, char* ptr, usz buf_len);
+
+// ============================================================================
 // Utility Functions
 // ============================================================================
 
@@ -146,3 +205,87 @@ extern fn int mz_inflateEnd(MzStream* stream);
  * Get miniz version string
  */
 extern fn char* mz_version();
+
+// ============================================================================
+// Low-Level Compression (tdefl)
+// ============================================================================
+
+// tdefl compression flags
+const int TDEFL_WRITE_ZLIB_HEADER = 0x01000;
+const int TDEFL_COMPUTE_ADLER32 = 0x02000;
+const int TDEFL_GREEDY_PARSING_FLAG = 0x04000;
+const int TDEFL_NONDETERMINISTIC_PARSING_FLAG = 0x08000;
+const int TDEFL_RLE_MATCHES = 0x10000;
+const int TDEFL_FILTER_MATCHES = 0x20000;
+const int TDEFL_FORCE_ALL_STATIC_BLOCKS = 0x40000;
+const int TDEFL_FORCE_ALL_RAW_BLOCKS = 0x80000;
+
+const int TDEFL_HUFFMAN_ONLY = 0;
+const int TDEFL_DEFAULT_MAX_PROBES = 128;
+const int TDEFL_MAX_PROBES_MASK = 0xFFF;
+
+// Opaque compressor state
+typedef TdeflCompressor = void;
+
+/**
+ * Compress memory block to heap-allocated buffer
+ * Returns pointer to compressed data (caller must call mz_free), or null on failure
+ * flags: TDEFL_* flags OR'd with max probes (0-4095)
+ */
+extern fn void* tdefl_compress_mem_to_heap(void* src_buf, usz src_buf_len, usz* out_len, int flags);
+
+/**
+ * Compress memory block to fixed buffer
+ * Returns compressed size, or 0 on failure
+ */
+extern fn usz tdefl_compress_mem_to_mem(void* out_buf, usz out_buf_len, void* src_buf, usz src_buf_len, int flags);
+
+/**
+ * Allocate compressor state
+ */
+extern fn TdeflCompressor* tdefl_compressor_alloc();
+
+/**
+ * Free compressor state
+ */
+extern fn void tdefl_compressor_free(TdeflCompressor* comp);
+
+/**
+ * Create compression flags from zlib-style parameters
+ */
+extern fn uint tdefl_create_comp_flags_from_zip_params(int level, int window_bits, int strategy);
+
+// ============================================================================
+// Low-Level Decompression (tinfl)
+// ============================================================================
+
+// tinfl decompression flags
+const int TINFL_FLAG_PARSE_ZLIB_HEADER = 1;
+const int TINFL_FLAG_HAS_MORE_INPUT = 2;
+const int TINFL_FLAG_USING_NON_WRAPPING_OUTPUT_BUF = 4;
+const int TINFL_FLAG_COMPUTE_ADLER32 = 8;
+
+// Opaque decompressor state
+typedef TinflDecompressor = void;
+
+/**
+ * Decompress memory block to heap-allocated buffer
+ * Returns pointer to decompressed data (caller must call mz_free), or null on failure
+ */
+extern fn void* tinfl_decompress_mem_to_heap(void* src_buf, usz src_buf_len, usz* out_len, int flags);
+
+/**
+ * Decompress memory block to fixed buffer
+ * Returns decompressed size, or (usz)-1 on failure
+ */
+extern fn usz tinfl_decompress_mem_to_mem(void* out_buf, usz out_buf_len, void* src_buf, usz src_buf_len, int flags);
+
+/**
+ * Allocate decompressor state
+ */
+extern fn TinflDecompressor* tinfl_decompressor_alloc();
+
+/**
+ * Free decompressor state
+ */
+extern fn void tinfl_decompressor_free(TinflDecompressor* decomp);
