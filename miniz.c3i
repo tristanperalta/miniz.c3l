@@ -289,3 +289,314 @@ extern fn TinflDecompressor* tinfl_decompressor_alloc();
  * Free decompressor state
  */
 extern fn void tinfl_decompressor_free(TinflDecompressor* decomp);
+
+// ============================================================================
+// ZIP Archive Constants
+// ============================================================================
+
+const uint MZ_ZIP_MAX_IO_BUF_SIZE = 64 * 1024;
+const uint MZ_ZIP_MAX_ARCHIVE_FILENAME_SIZE = 512;
+const uint MZ_ZIP_MAX_ARCHIVE_FILE_COMMENT_SIZE = 512;
+
+// ZIP mode
+enum MzZipMode : int (int value) {
+    INVALID = 0,
+    READING = 1,
+    WRITING = 2,
+    WRITING_HAS_BEEN_FINALIZED = 3
+}
+
+// ZIP type
+enum MzZipType : int (int value) {
+    INVALID = 0,
+    USER = 1,
+    MEMORY = 2,
+    HEAP = 3,
+    FILE = 4,
+    CFILE = 5
+}
+
+// ZIP flags
+const uint MZ_ZIP_FLAG_CASE_SENSITIVE = 0x0100;
+const uint MZ_ZIP_FLAG_IGNORE_PATH = 0x0200;
+const uint MZ_ZIP_FLAG_COMPRESSED_DATA = 0x0400;
+const uint MZ_ZIP_FLAG_DO_NOT_SORT_CENTRAL_DIRECTORY = 0x0800;
+const uint MZ_ZIP_FLAG_VALIDATE_LOCATE_FILE_FLAG = 0x1000;
+const uint MZ_ZIP_FLAG_VALIDATE_HEADERS_ONLY = 0x2000;
+const uint MZ_ZIP_FLAG_WRITE_ZIP64 = 0x4000;
+const uint MZ_ZIP_FLAG_WRITE_ALLOW_READING = 0x8000;
+const uint MZ_ZIP_FLAG_ASCII_FILENAME = 0x10000;
+const uint MZ_ZIP_FLAG_WRITE_HEADER_SET_SIZE = 0x20000;
+
+// ZIP error codes
+enum MzZipError : int (int value) {
+    NO_ERROR = 0,
+    UNDEFINED_ERROR = 1,
+    TOO_MANY_FILES = 2,
+    FILE_TOO_LARGE = 3,
+    UNSUPPORTED_METHOD = 4,
+    UNSUPPORTED_ENCRYPTION = 5,
+    UNSUPPORTED_FEATURE = 6,
+    FAILED_FINDING_CENTRAL_DIR = 7,
+    NOT_AN_ARCHIVE = 8,
+    INVALID_HEADER_OR_CORRUPTED = 9,
+    UNSUPPORTED_MULTIDISK = 10,
+    DECOMPRESSION_FAILED = 11,
+    COMPRESSION_FAILED = 12,
+    UNEXPECTED_DECOMPRESSED_SIZE = 13,
+    CRC_CHECK_FAILED = 14,
+    UNSUPPORTED_CDIR_SIZE = 15,
+    ALLOC_FAILED = 16,
+    FILE_OPEN_FAILED = 17,
+    FILE_CREATE_FAILED = 18,
+    FILE_WRITE_FAILED = 19,
+    FILE_READ_FAILED = 20,
+    FILE_CLOSE_FAILED = 21,
+    FILE_SEEK_FAILED = 22,
+    FILE_STAT_FAILED = 23,
+    INVALID_PARAMETER = 24,
+    INVALID_FILENAME = 25,
+    BUF_TOO_SMALL = 26,
+    INTERNAL_ERROR = 27,
+    FILE_NOT_FOUND = 28,
+    ARCHIVE_TOO_LARGE = 29,
+    VALIDATION_FAILED = 30,
+    WRITE_CALLBACK_FAILED = 31
+}
+
+// ============================================================================
+// ZIP Archive Types
+// ============================================================================
+
+// Opaque internal state
+typedef MzZipInternalState = void;
+
+// ZIP archive structure
+struct MzZipArchive {
+    ulong m_archive_size;
+    ulong m_central_directory_file_ofs;
+    uint m_total_files;
+    MzZipMode m_zip_mode;
+    MzZipType m_zip_type;
+    MzZipError m_last_error;
+    ulong m_file_offset_alignment;
+    void* m_pAlloc;
+    void* m_pFree;
+    void* m_pRealloc;
+    void* m_pAlloc_opaque;
+    void* m_pRead;
+    void* m_pWrite;
+    void* m_pNeeds_keepalive;
+    void* m_pIO_opaque;
+    MzZipInternalState* m_pState;
+}
+
+// File stat structure
+struct MzZipArchiveFileStat {
+    uint m_file_index;
+    ulong m_central_dir_ofs;
+    ushort m_version_made_by;
+    ushort m_version_needed;
+    ushort m_bit_flag;
+    ushort m_method;
+    uint m_crc32;
+    ulong m_comp_size;
+    ulong m_uncomp_size;
+    ushort m_internal_attr;
+    uint m_external_attr;
+    ulong m_local_header_ofs;
+    uint m_comment_size;
+    int m_is_directory;
+    int m_is_encrypted;
+    int m_is_supported;
+    char[MZ_ZIP_MAX_ARCHIVE_FILENAME_SIZE] m_filename;
+    char[MZ_ZIP_MAX_ARCHIVE_FILE_COMMENT_SIZE] m_comment;
+    long m_time;
+}
+
+// ============================================================================
+// ZIP Reader Functions
+// ============================================================================
+
+/**
+ * Clear ZIP archive struct - MUST call before using
+ */
+extern fn void mz_zip_zero_struct(MzZipArchive* zip);
+
+/**
+ * Initialize ZIP reader from memory buffer
+ */
+extern fn int mz_zip_reader_init_mem(MzZipArchive* zip, void* mem, usz size, uint flags);
+
+/**
+ * Initialize ZIP reader from file
+ */
+extern fn int mz_zip_reader_init_file(MzZipArchive* zip, char* filename, uint flags);
+
+/**
+ * End ZIP reading, free resources
+ */
+extern fn int mz_zip_reader_end(MzZipArchive* zip);
+
+/**
+ * Get number of files in archive
+ */
+extern fn uint mz_zip_reader_get_num_files(MzZipArchive* zip);
+
+/**
+ * Get filename of file at index
+ * Returns bytes written, or required size if filename_buf_size is 0
+ */
+extern fn uint mz_zip_reader_get_filename(MzZipArchive* zip, uint file_index, char* filename, uint filename_buf_size);
+
+/**
+ * Locate file by name
+ * Returns file index, or -1 if not found
+ */
+extern fn int mz_zip_reader_locate_file(MzZipArchive* zip, char* name, char* comment, uint flags);
+
+/**
+ * Get file statistics
+ */
+extern fn int mz_zip_reader_file_stat(MzZipArchive* zip, uint file_index, MzZipArchiveFileStat* stat);
+
+/**
+ * Check if file is a directory
+ */
+extern fn int mz_zip_reader_is_file_a_directory(MzZipArchive* zip, uint file_index);
+
+/**
+ * Check if file is encrypted
+ */
+extern fn int mz_zip_reader_is_file_encrypted(MzZipArchive* zip, uint file_index);
+
+/**
+ * Check if file is supported (can be extracted)
+ */
+extern fn int mz_zip_reader_is_file_supported(MzZipArchive* zip, uint file_index);
+
+/**
+ * Extract file to memory buffer
+ */
+extern fn int mz_zip_reader_extract_to_mem(MzZipArchive* zip, uint file_index, void* buf, usz buf_size, uint flags);
+
+/**
+ * Extract file by name to memory buffer
+ */
+extern fn int mz_zip_reader_extract_file_to_mem(MzZipArchive* zip, char* filename, void* buf, usz buf_size, uint flags);
+
+/**
+ * Extract file to heap-allocated buffer
+ * Returns pointer (caller must call mz_free), or null on failure
+ */
+extern fn void* mz_zip_reader_extract_to_heap(MzZipArchive* zip, uint file_index, usz* size, uint flags);
+
+/**
+ * Extract file by name to heap-allocated buffer
+ */
+extern fn void* mz_zip_reader_extract_file_to_heap(MzZipArchive* zip, char* filename, usz* size, uint flags);
+
+/**
+ * Extract file to disk file
+ */
+extern fn int mz_zip_reader_extract_to_file(MzZipArchive* zip, uint file_index, char* dst_filename, uint flags);
+
+/**
+ * Extract file by name to disk file
+ */
+extern fn int mz_zip_reader_extract_file_to_file(MzZipArchive* zip, char* archive_filename, char* dst_filename, uint flags);
+
+// ============================================================================
+// ZIP Writer Functions
+// ============================================================================
+
+/**
+ * Initialize ZIP writer to heap memory
+ */
+extern fn int mz_zip_writer_init_heap(MzZipArchive* zip, usz size_to_reserve, usz initial_allocation_size);
+
+/**
+ * Initialize ZIP writer to file
+ */
+extern fn int mz_zip_writer_init_file(MzZipArchive* zip, char* filename, ulong size_to_reserve);
+
+/**
+ * Add memory buffer to archive
+ * level_and_flags: compression level (0-10) OR'd with MZ_ZIP_FLAG_*
+ */
+extern fn int mz_zip_writer_add_mem(MzZipArchive* zip, char* archive_name, void* buf, usz buf_size, uint level_and_flags);
+
+/**
+ * Add disk file to archive
+ */
+extern fn int mz_zip_writer_add_file(MzZipArchive* zip, char* archive_name, char* src_filename, void* comment, ushort comment_size, uint level_and_flags);
+
+/**
+ * Finalize archive - MUST call before mz_zip_writer_end
+ */
+extern fn int mz_zip_writer_finalize_archive(MzZipArchive* zip);
+
+/**
+ * Finalize heap archive and get buffer pointer
+ */
+extern fn int mz_zip_writer_finalize_heap_archive(MzZipArchive* zip, void** buf, usz* size);
+
+/**
+ * End ZIP writing, free resources
+ */
+extern fn int mz_zip_writer_end(MzZipArchive* zip);
+
+// ============================================================================
+// ZIP Utility Functions
+// ============================================================================
+
+/**
+ * Get current ZIP mode
+ */
+extern fn MzZipMode mz_zip_get_mode(MzZipArchive* zip);
+
+/**
+ * Get current ZIP type
+ */
+extern fn MzZipType mz_zip_get_type(MzZipArchive* zip);
+
+/**
+ * Get last error
+ */
+extern fn MzZipError mz_zip_get_last_error(MzZipArchive* zip);
+
+/**
+ * Get error string
+ */
+extern fn char* mz_zip_get_error_string(MzZipError err);
+
+/**
+ * Check if archive is ZIP64
+ */
+extern fn int mz_zip_is_zip64(MzZipArchive* zip);
+
+/**
+ * Universal end function - works for both reader and writer
+ */
+extern fn int mz_zip_end(MzZipArchive* zip);
+
+/**
+ * Validate archive in memory
+ */
+extern fn int mz_zip_validate_mem_archive(void* mem, usz size, uint flags, MzZipError* err);
+
+// ============================================================================
+// ZIP High-Level Helper Functions
+// ============================================================================
+
+/**
+ * Add memory buffer to archive file on disk (creates if doesn't exist)
+ * WARNING: Not atomic - archive can be corrupted if operation fails
+ */
+extern fn int mz_zip_add_mem_to_archive_file_in_place(char* zip_filename, char* archive_name, void* buf, usz buf_size, void* comment, ushort comment_size, uint level_and_flags);
+
+/**
+ * Extract single file from archive on disk to heap
+ * Returns pointer (caller must call mz_free), or null on failure
+ */
+extern fn void* mz_zip_extract_archive_file_to_heap(char* zip_filename, char* archive_name, usz* size, uint flags);

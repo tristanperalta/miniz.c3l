@@ -161,10 +161,58 @@ fn void low_level_example() {
 
 **Flags:** `TINFL_FLAG_PARSE_ZLIB_HEADER`, `TINFL_FLAG_COMPUTE_ADLER32`, etc.
 
+### ZIP Archive Reading
+
+**Types:**
+- `MzZipArchive` - Main archive struct
+- `MzZipArchiveFileStat` - File metadata (filename, sizes, CRC, etc.)
+
+**Reader Init/End:**
+- `mz_zip_zero_struct(zip)` - Clear struct before use (required!)
+- `mz_zip_reader_init_mem(zip, mem, size, flags)` - From memory buffer
+- `mz_zip_reader_init_file(zip, filename, flags)` - From file
+- `mz_zip_reader_end(zip)` - Free resources
+
+**Query:**
+- `mz_zip_reader_get_num_files(zip)` - File count
+- `mz_zip_reader_get_filename(zip, index, buf, buf_size)` - Get filename
+- `mz_zip_reader_locate_file(zip, name, comment, flags)` - Find file by name
+- `mz_zip_reader_file_stat(zip, index, stat)` - Get file metadata
+- `mz_zip_reader_is_file_a_directory(zip, index)`
+
+**Extract:**
+- `mz_zip_reader_extract_to_mem(zip, index, buf, buf_size, flags)`
+- `mz_zip_reader_extract_file_to_mem(zip, filename, buf, buf_size, flags)`
+- `mz_zip_reader_extract_to_heap(zip, index, size, flags)` - Returns malloc'd buffer
+- `mz_zip_reader_extract_file_to_heap(zip, filename, size, flags)`
+- `mz_zip_reader_extract_to_file(zip, index, dst_filename, flags)`
+
+### ZIP Archive Writing
+
+**Writer Init/End:**
+- `mz_zip_writer_init_heap(zip, reserve, initial_size)` - To memory
+- `mz_zip_writer_init_file(zip, filename, reserve)` - To file
+- `mz_zip_writer_finalize_archive(zip)` - Must call before end
+- `mz_zip_writer_finalize_heap_archive(zip, buf, size)` - Get heap buffer
+- `mz_zip_writer_end(zip)` - Free resources
+
+**Add Files:**
+- `mz_zip_writer_add_mem(zip, name, buf, size, level_and_flags)`
+- `mz_zip_writer_add_file(zip, name, src_filename, comment, comment_size, level_and_flags)`
+
+**Flags:** `MZ_ZIP_FLAG_CASE_SENSITIVE`, `MZ_ZIP_FLAG_IGNORE_PATH`, `MZ_ZIP_FLAG_WRITE_ZIP64`, etc.
+
+**High-Level Helpers:**
+- `mz_zip_add_mem_to_archive_file_in_place(filename, name, buf, size, ...)` - Append to file
+- `mz_zip_extract_archive_file_to_heap(filename, name, size, flags)` - Extract single file
+
 ### Utility
 
 - `mz_version()` - Get miniz version string
 - `mz_free(ptr)` - Free miniz-allocated memory
+- `mz_zip_get_last_error(zip)` - Get last ZIP error
+- `mz_zip_get_error_string(err)` - Error code to string
+- `mz_zip_end(zip)` - Universal end (reader or writer)
 
 ## License
 

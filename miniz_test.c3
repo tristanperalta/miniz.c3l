@@ -232,3 +232,167 @@ fn void test_tdefl_tinfl_mem_to_mem()
         assert(decompressed[i] == input[i], "data mismatch");
     }
 }
+
+// ============================================================================
+// ZIP Archive APIs
+// ============================================================================
+
+fn void test_zip_write_read_memory()
+{
+    // Create a ZIP archive in memory with two files
+    miniz::MzZipArchive zip;
+    miniz::mz_zip_zero_struct(&zip);
+
+    // Initialize writer to heap
+    int ret = miniz::mz_zip_writer_init_heap(&zip, 0, 0);
+    assert(ret != 0, "mz_zip_writer_init_heap failed");
+
+    // Add first file
+    char[] file1_data = "Hello from file 1!";
+    ret = miniz::mz_zip_writer_add_mem(&zip, "file1.txt", file1_data.ptr, file1_data.len, miniz::MZ_DEFAULT_LEVEL);
+    assert(ret != 0, "mz_zip_writer_add_mem file1 failed");
+
+    // Add second file
+    char[] file2_data = "This is file 2 with more content. The quick brown fox jumps over the lazy dog.";
+    ret = miniz::mz_zip_writer_add_mem(&zip, "subdir/file2.txt", file2_data.ptr, file2_data.len, miniz::MZ_BEST_COMPRESSION);
+    assert(ret != 0, "mz_zip_writer_add_mem file2 failed");
+
+    // Finalize and get the heap buffer
+    void* zip_data;
+    usz zip_size;
+    ret = miniz::mz_zip_writer_finalize_heap_archive(&zip, &zip_data, &zip_size);
+    assert(ret != 0, "mz_zip_writer_finalize_heap_archive failed");
+    assert(zip_data != null, "zip_data should not be null");
+    assert(zip_size > 0, "zip_size should be positive");
+
+    miniz::mz_zip_writer_end(&zip);
+
+    // Now read the archive back from memory
+    miniz::MzZipArchive read_zip;
+    miniz::mz_zip_zero_struct(&read_zip);
+
+    ret = miniz::mz_zip_reader_init_mem(&read_zip, zip_data, zip_size, 0);
+    assert(ret != 0, "mz_zip_reader_init_mem failed");
+
+    // Check file count
+    uint num_files = miniz::mz_zip_reader_get_num_files(&read_zip);
+    assert(num_files == 2, "should have 2 files");
+
+    // Locate file1
+    int file1_idx = miniz::mz_zip_reader_locate_file(&read_zip, "file1.txt", null, 0);
+    assert(file1_idx >= 0, "file1.txt not found");
+
+    // Extract file1 to heap
+    usz extracted_size;
+    void* extracted = miniz::mz_zip_reader_extract_to_heap(&read_zip, (uint)file1_idx, &extracted_size, 0);
+    assert(extracted != null, "extract_to_heap failed");
+    assert(extracted_size == file1_data.len, "extracted size mismatch");
+
+    // Verify content
+    char* extracted_chars = (char*)extracted;
+    for (usz i = 0; i < file1_data.len; i++) {
+        assert(extracted_chars[i] == file1_data[i], "file1 content mismatch");
+    }
+    miniz::mz_free(extracted);
+
+    // Locate file2 by name and extract
+    usz file2_extracted_size;
+    void* file2_extracted = miniz::mz_zip_reader_extract_file_to_heap(&read_zip, "subdir/file2.txt", &file2_extracted_size, 0);
+    assert(file2_extracted != null, "extract file2 failed");
+    assert(file2_extracted_size == file2_data.len, "file2 size mismatch");
+    miniz::mz_free(file2_extracted);
+
+    miniz::mz_zip_reader_end(&read_zip);
+    miniz::mz_free(zip_data);
+}
+
+fn void test_zip_file_stat()
+{
+    // Create a simple ZIP in memory
+    miniz::MzZipArchive zip;
+    miniz::mz_zip_zero_struct(&zip);
+
+    miniz::mz_zip_writer_init_heap(&zip, 0, 0);
+
+    char[] test_data = "Test file content for stat";
+    miniz::mz_zip_writer_add_mem(&zip, "testfile.txt", test_data.ptr, test_data.len, miniz::MZ_DEFAULT_LEVEL);
+
+    void* zip_data;
+    usz zip_size;
+    miniz::mz_zip_writer_finalize_heap_archive(&zip, &zip_data, &zip_size);
+    miniz::mz_zip_writer_end(&zip);
+
+    // Read and get file stat
+    miniz::MzZipArchive read_zip;
+    miniz::mz_zip_zero_struct(&read_zip);
+    miniz::mz_zip_reader_init_mem(&read_zip, zip_data, zip_size, 0);
+
+    miniz::MzZipArchiveFileStat stat;
+    int ret = miniz::mz_zip_reader_file_stat(&read_zip, 0, &stat);
+    assert(ret != 0, "mz_zip_reader_file_stat failed");
+
+    // Verify stat fields
+    assert(stat.m_uncomp_size == test_data.len, "uncompressed size mismatch");
+    assert(stat.m_is_directory == 0, "should not be a directory");
+    assert(stat.m_is_supported != 0, "should be supported");
+
+    // Verify filename
+    assert(stat.m_filename[0] == 't', "filename should start with 't'");
+
+    miniz::mz_zip_reader_end(&read_zip);
+    miniz::mz_free(zip_data);
+}
+
+fn void test_zip_error_handling()
+{
+    // Test error string function
+    char* err_str = miniz::mz_zip_get_error_string(miniz::MzZipError.NO_ERROR);
+    assert(err_str != null, "error string should not be null");
+
+    err_str = miniz::mz_zip_get_error_string(miniz::MzZipError.FILE_NOT_FOUND);
+    assert(err_str != null, "error string should not be null");
+
+    // Test with invalid data
+    miniz::MzZipArchive zip;
+    miniz::mz_zip_zero_struct(&zip);
+
+    char[] invalid_data = "This is not a valid ZIP file";
+    int ret = miniz::mz_zip_reader_init_mem(&zip, invalid_data.ptr, invalid_data.len, 0);
+    assert(ret == 0, "should fail on invalid ZIP data");
+
+    miniz::MzZipError err = miniz::mz_zip_get_last_error(&zip);
+    assert(err != miniz::MzZipError.NO_ERROR, "should have an error");
+}
+
+fn void test_zip_extract_to_mem()
+{
+    // Create ZIP with known content
+    miniz::MzZipArchive zip;
+    miniz::mz_zip_zero_struct(&zip);
+    miniz::mz_zip_writer_init_heap(&zip, 0, 0);
+
+    char[] content = "Fixed buffer extraction test";
+    miniz::mz_zip_writer_add_mem(&zip, "test.txt", content.ptr, content.len, 0);
+
+    void* zip_data;
+    usz zip_size;
+    miniz::mz_zip_writer_finalize_heap_archive(&zip, &zip_data, &zip_size);
+    miniz::mz_zip_writer_end(&zip);
+
+    // Read and extract to fixed buffer
+    miniz::MzZipArchive read_zip;
+    miniz::mz_zip_zero_struct(&read_zip);
+    miniz::mz_zip_reader_init_mem(&read_zip, zip_data, zip_size, 0);
+
+    char[256] buffer;
+    int ret = miniz::mz_zip_reader_extract_to_mem(&read_zip, 0, &buffer[0], buffer.len, 0);
+    assert(ret != 0, "extract_to_mem failed");
+
+    // Verify content
+    for (usz i = 0; i < content.len; i++) {
+        assert(buffer[i] == content[i], "content mismatch");
+    }
+
+    miniz::mz_zip_reader_end(&read_zip);
+    miniz::mz_free(zip_data);
+}
