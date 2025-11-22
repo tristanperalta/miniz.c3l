@@ -1,0 +1,16 @@
+{
+  "sources": ["miniz.c3i"],
+  "test-sources": ["miniz_test.c3"],
+  "c-sources": [
+    "csrc/miniz.c",
+    "csrc/miniz_tdef.c",
+    "csrc/miniz_tinfl.c",
+    "csrc/miniz_zip.c"
+  ],
+  "c-include-dirs": ["include", "csrc"],
+  "targets": {
+    "test": {
+      "type": "test"
+    }
+  }
+}

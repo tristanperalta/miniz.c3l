@@ -1,0 +1,148 @@
+/**
+ * miniz - zlib-compatible compression library
+ *
+ * C3 bindings for miniz deflate/inflate functions
+ * https://github.com/richgel999/miniz
+ */
+module miniz;
+
+// ============================================================================
+// Constants
+// ============================================================================
+
+const int MZ_DEFAULT_WINDOW_BITS = 15;
+const int MZ_DEFAULT_LEVEL = 6;
+const int MZ_DEFAULT_STRATEGY = 0;
+const int MZ_DEFLATED = 8;
+
+// Flush values
+const int MZ_NO_FLUSH = 0;
+const int MZ_PARTIAL_FLUSH = 1;
+const int MZ_SYNC_FLUSH = 2;
+const int MZ_FULL_FLUSH = 3;
+const int MZ_FINISH = 4;
+const int MZ_BLOCK = 5;
+
+// Return codes
+const int MZ_OK = 0;
+const int MZ_STREAM_END = 1;
+const int MZ_NEED_DICT = 2;
+const int MZ_ERRNO = -1;
+const int MZ_STREAM_ERROR = -2;
+const int MZ_DATA_ERROR = -3;
+const int MZ_MEM_ERROR = -4;
+const int MZ_BUF_ERROR = -5;
+const int MZ_VERSION_ERROR = -6;
+const int MZ_PARAM_ERROR = -10000;
+
+// ============================================================================
+// Types
+// ============================================================================
+
+alias MzUlong = ulong;
+
+// Opaque internal state (never accessed directly)
+typedef MzInternalState = void;
+
+struct MzStream {
+    char* next_in;          // pointer to next byte to read
+    uint avail_in;          // number of bytes available at next_in
+    MzUlong total_in;       // total number of bytes consumed so far
+
+    char* next_out;         // pointer to next byte to write
+    uint avail_out;         // number of bytes that can be written to next_out
+    MzUlong total_out;      // total number of bytes produced so far
+
+    char* msg;              // error msg (unused)
+    MzInternalState* state; // internal state
+
+    void* zalloc;           // optional heap allocation function
+    void* zfree;            // optional heap free function
+    void* opaque;           // heap alloc function user pointer
+
+    int data_type;          // data_type (unused)
+    MzUlong adler;          // adler32 of the source or uncompressed data
+    MzUlong reserved;       // not used
+}
+
+// ============================================================================
+// Deflate Functions
+// ============================================================================
+
+/**
+ * Initialize deflate compressor
+ * level: compression level 0-10 (0=none, 1=fast, 6=default, 9=best)
+ */
+extern fn int mz_deflateInit(MzStream* stream, int level);
+
+/**
+ * Initialize deflate with more control
+ * window_bits: use -MZ_DEFAULT_WINDOW_BITS for raw deflate (no zlib header)
+ * mem_level: 1-9 (default 8)
+ * strategy: MZ_DEFAULT_STRATEGY (0)
+ */
+extern fn int mz_deflateInit2(MzStream* stream, int level, int method,
+                               int window_bits, int mem_level, int strategy);
+
+/**
+ * Compress data
+ * flush: MZ_NO_FLUSH, MZ_SYNC_FLUSH, MZ_FINISH
+ * Returns: MZ_OK, MZ_STREAM_END, or error
+ */
+extern fn int mz_deflate(MzStream* stream, int flush);
+
+/**
+ * Reset deflate state for reuse
+ */
+extern fn int mz_deflateReset(MzStream* stream);
+
+/**
+ * Free deflate state
+ */
+extern fn int mz_deflateEnd(MzStream* stream);
+
+/**
+ * Get upper bound on compressed size
+ */
+extern fn MzUlong mz_deflateBound(MzStream* stream, MzUlong source_len);
+
+// ============================================================================
+// Inflate Functions
+// ============================================================================
+
+/**
+ * Initialize inflate decompressor
+ */
+extern fn int mz_inflateInit(MzStream* stream);
+
+/**
+ * Initialize inflate with window size control
+ * window_bits: use -MZ_DEFAULT_WINDOW_BITS for raw deflate (no zlib header)
+ */
+extern fn int mz_inflateInit2(MzStream* stream, int window_bits);
+
+/**
+ * Decompress data
+ * flush: MZ_NO_FLUSH, MZ_SYNC_FLUSH, MZ_FINISH
+ * Returns: MZ_OK, MZ_STREAM_END, or error
+ */
+extern fn int mz_inflate(MzStream* stream, int flush);
+
+/**
+ * Reset inflate state for reuse
+ */
+extern fn int mz_inflateReset(MzStream* stream);
+
+/**
+ * Free inflate state
+ */
+extern fn int mz_inflateEnd(MzStream* stream);
+
+// ============================================================================
+// Utility Functions
+// ============================================================================
+
+/**
+ * Get miniz version string
+ */
+extern fn char* mz_version();
